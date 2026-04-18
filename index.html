@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Managed Web Map - EE</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+    
+    <style>
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; overflow: hidden; }
+        #map { height: 100vh; width: 100%; background: #fff; }
+        
+       /* The main search container */
+.map-overlay {
+    position: absolute; 
+    bottom: 35px; /* Stayed above the coord bar */
+    right: 10px; 
+    width: 260px; /* Narrower for mobile */
+    max-width: 85vw; /* Never wider than 85% of the screen */
+    z-index: 1000;
+    background: rgba(255, 255, 255, 0.95); 
+    padding: 10px; 
+    border-radius: 8px;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.3);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* The "Hidden" or Minimized state */
+.map-overlay.minimized {
+    height: 24px;   /* Very short */
+    width: 240px;   /* Very narrow */
+    padding: 6px 10px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.8);
+}
+
+/* Ensure the header text shrinks when minimized */
+.map-overlay.minimized b {
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+/* Hide the search box and nav completely when minimized */
+.map-overlay.minimized .search-box, 
+.map-overlay.minimized #status-text, 
+.map-overlay.minimized #search-nav {
+    display: none !important;
+}
+
+/* Mobile Specific Tweaks */
+@media (max-width: 600px) {
+    .map-overlay {
+        right: 5px;
+        bottom: 30px;
+        padding: 8px;
+    }
+    input {
+        font-size: 16px; /* Prevents iOS from auto-zooming on focus */
+    }
+}
+
+
+        .header-row { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+        .hide-btn { cursor: pointer; background: #555; color: white; border: none; border-radius: 4px; padding: 2px 8px; font-size: 11px; }
+
+        .search-box { display: flex; gap: 4px; margin-top: 10px; }
+        input { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+        button.find-btn { cursor: pointer; padding: 8px; background: #007bff; color: white; border: none; border-radius: 4px; }
+        
+        #status-text { font-size: 11px; margin-top: 8px; color: #d9534f; font-weight: bold; }
+        #search-nav { display: flex; justify-content: space-between; margin-top: 8px; gap: 5px; }
+        .nav-btn { font-size: 11px; flex: 1; padding: 6px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; }
+
+        #coords-info {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 25px;
+            background: rgba(0, 0, 0, 0.85); color: white; z-index: 2000;
+            font-size: 11px; display: flex; align-items: center; padding-left: 10px; pointer-events: none;
+        }
+
+        /* Neon Glow Effect for Points */
+        .bright-point { filter: drop-shadow(0 0 4px rgba(0,0,0,0.5)); }
+
+        @media (max-width: 600px) {
+            .leaflet-draw-toolbar { margin-top: 60px !important; }
+            .map-overlay { width: 240px; right: 5px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="coords-info">Lat: 0.000 | Lon: 0.000</div>
+<div id="map"></div>
+
+<div class="map-overlay" id="search-panel">
+    <div class="header-row">
+        <b style="font-size: 12px;">Web Map by Dayamoy Ghosh,EE</b>
+        <button class="hide-btn" onclick="toggleSearch()">X</button>
+    </div>
+    
+    <div class="search-box">
+        <input type="text" id="search-input" placeholder="Search P-I or P-II...">
+        <button class="find-btn" onclick="performSearch()">Find</button>
+    </div>
+    
+    <div id="status-text">Select Layers in Top-Right</div>
+    
+    <div id="search-nav" style="display:none;">
+        <button class="nav-btn" onclick="cycleResults(-1)">← Prev</button>
+        <button class="nav-btn" onclick="cycleResults(1)">Next →</button>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+<script>
+    const map = L.map('map', { preferCanvas: true }).setView([23.92, 87.53], 12);
+
+    // --- GOOGLE BASEMAPS ---
+    const googleStreets = L.tileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        maxZoom: 22, subdomains:['mt0','mt1','mt2','mt3'], attribution: '© Google Maps'
+    }).addTo(map); // DEFAULT BASE
+
+    const googleHybrid = L.tileLayer('http://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+        maxZoom: 22, subdomains:['mt0','mt1','mt2','mt3'], attribution: '© Google Hybrid'
+    });
+
+    const googleSat = L.tileLayer('http://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+        maxZoom: 22, subdomains:['mt0','mt1','mt2','mt3'], attribution: '© Google Satellite'
+    });
+
+    const baseMaps = {
+        "Google Street Map": googleStreets,
+        "Google Hybrid": googleHybrid,
+        "Google Satellite": googleSat
+    };
+
+    // --- DRAWING TOOLS ---
+    const drawnItems = new L.FeatureGroup().addTo(map);
+    const drawControl = new L.Control.Draw({
+        edit: { featureGroup: drawnItems },
+        draw: {
+            circle: true, rectangle: true, marker: true,
+            polyline: { shapeOptions: { color: '#f357a1', weight: 4 } },
+            polygon: { allowIntersection: false, showArea: true, shapeOptions: { color: '#4d90fe' } }
+        }
+    });
+    map.addControl(drawControl);
+
+    map.on(L.Draw.Event.CREATED, (e) => {
+        const layer = e.layer;
+        let content = "";
+        if (e.layerType === 'polyline') {
+            let distance = 0;
+            const latlngs = layer.getLatLngs();
+            for (let i = 0; i < latlngs.length - 1; i++) distance += latlngs[i].distanceTo(latlngs[i + 1]);
+            content = "Distance: " + (distance / 1000).toFixed(3) + " km";
+        } else if (e.layerType === 'polygon' || e.layerType === 'rectangle') {
+            const area = L.GeometryUtil.geodesicArea(layer.getLatLngs()[0]);
+            content = "Area: " + (area / 10000).toFixed(3) + " Ha";
+        }
+        if(content) layer.bindPopup(content).openPopup();
+        drawnItems.addLayer(layer);
+    });
+
+    // --- GEOJSON LOGIC ---
+    let allLayers = [];
+    let searchResults = [];
+    let currentIndex = -1;
+    let lastHighlighted = null;
+
+    const geojsonConfig = [
+        { url: 'mouzabound.geojson', name: 'Mouza Boundary P-I', color: '#00fbff' },
+        { url: 'mouzabound2.geojson', name: 'Mouza Boundary P-II', color: '#ff00ff' },
+        { url: 'wridd.geojson', name: 'WRIDD + WBADMIP I Scheme', color: '#FF4500', pointColor: '#FF4500' }, // OrangeRed
+        { url: 'WBADMIPII.geojson', name: 'WBADMIP PH-II Scheme', color: '#32CD32', pointColor: '#32CD32' }, // LimeGreen
+        { url: 'dg4.geojson', name: 'WBADMIP Proposed Scheme', color: '#0073ff', pointColor: '#0073ff' }
+    ];
+
+    const overlayMaps = {};
+
+    async function loadData(config, group) {
+        try {
+            const res = await fetch(config.url);
+            const data = await res.json();
+            L.geoJSON(data, {
+                pointToLayer: (feature, latlng) => {
+                    // Determine styling based on layer name
+                    let radius = 5;
+                    let fill = "#00ffff"; // default cyan
+                    
+                    if (config.name.includes('WBADMIP I Scheme')) {
+                        radius =6;
+                        fill = "#FF4500"; // Neon Orange
+                    } else if (config.name.includes('PH-II Scheme')) {
+                        radius = 8;
+                        fill = "#00FF00"; // Neon Green
+                    }
+
+                    return L.circleMarker(latlng, {
+                        radius: radius,
+                        fillColor: fill,
+                        color: "#fff",
+                        weight: 2,
+                        fillOpacity: 1,
+                        className: 'bright-point'
+                    });
+                },
+                style: (feature) => {
+                    return { color: config.color, weight: 2, fillOpacity: 0.1 };
+                },
+               onEachFeature: (feature, layer) => {
+    allLayers.push({ layer: layer, group: group, configName: config.name });
+    
+    // 1. Extract properties (handling potential case-sensitivity)
+    const p = feature.properties;
+    const dist = p.district || p.DISTRICT || 'N/A';
+    const block = p.BLOCK || p.block || 'N/A';
+    const mouza = p.MOUZA || p.mouza || 'N/A';
+
+    // 2. Create a multi-line HTML label
+    const hoverLabel = `
+        <div style="line-height: 1.4;">
+            <b style="color: #007bff;">Dist:</b> ${dist}<br>
+            <b style="color: #007bff;">Block:</b> ${block}<br>
+            <b style="color: #007bff;">Mouza:</b> ${mouza}
+        </div>
+    `;
+
+    // 3. Bind the tooltip with custom styling
+    layer.bindTooltip(hoverLabel, { 
+        sticky: true,           // Makes the label follow the mouse
+        direction: 'auto',      // Prevents label from going off-screen
+        className: 'qgis-label', // Uses your existing CSS class
+        opacity: 0.9
+    });
+}
+            }).addTo(group);
+        } catch (e) { console.warn("Missing file: " + config.url); }
+    }
+
+    geojsonConfig.forEach(config => {
+        const group = L.layerGroup();
+        overlayMaps[config.name] = group;
+        loadData(config, group);
+    });
+
+   // Change collapsed: false to true
+L.control.layers(baseMaps, overlayMaps, { collapsed: true }).addTo(map);
+
+    // --- SEARCH LOGIC ---
+    function performSearch() {
+        const query = document.getElementById('search-input').value.trim().toLowerCase();
+        searchResults = []; currentIndex = -1;
+        if (!query) return;
+
+        allLayers.forEach(obj => {
+            if (obj.configName === 'Mouza Boundary P-I' || obj.configName === 'Mouza Boundary P-II') {
+                const props = obj.layer.feature.properties;
+                const match = Object.values(props).some(v => v && v.toString().toLowerCase().includes(query));
+                if (match) searchResults.push(obj);
+            }
+        });
+
+        if (searchResults.length > 0) {
+            document.getElementById('search-nav').style.display = 'flex';
+            cycleResults(1);
+        } else {
+            document.getElementById('search-nav').style.display = 'none';
+            document.getElementById('status-text').innerText = "Not found in P-I or P-II.";
+        }
+    }
+
+    function cycleResults(dir) {
+        if (searchResults.length === 0) return;
+        if (lastHighlighted) {
+            // Reset style - handle both circleMarkers and Polygons
+            if (lastHighlighted.setStyle) {
+                lastHighlighted.setStyle({ weight: 2, color: lastHighlighted.options.originalColor });
+            }
+        }
+        currentIndex = (currentIndex + dir + searchResults.length) % searchResults.length;
+        const target = searchResults[currentIndex];
+        
+        if (!map.hasLayer(target.group)) map.addLayer(target.group);
+        
+        if (!target.layer.options.originalColor) target.layer.options.originalColor = target.layer.options.color;
+        
+        if (target.layer.setStyle) {
+            target.layer.setStyle({ color: 'yellow', weight: 6 });
+        }
+        
+        map.fitBounds(target.layer.getBounds ? target.layer.getBounds() : L.latLngBounds([target.layer.getLatLng()]));
+        target.layer.openPopup();
+        lastHighlighted = target.layer;
+        document.getElementById('status-text').innerText = `${currentIndex + 1} of ${searchResults.length} found`;
+    }
+
+    function toggleSearch() { document.getElementById('search-panel').classList.toggle('minimized'); }
+
+    map.on('mousemove', (e) => {
+        document.getElementById('coords-info').innerText = `Lat: ${e.latlng.lat.toFixed(5)} | Lon: ${e.latlng.lng.toFixed(5)}`;
+
+map.on('contextmenu', function(e) {
+    const lat = e.latlng.lat;
+    const lng = e.latlng.lng;
+    const svUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`;
+    
+    L.popup()
+        .setLatLng(e.latlng)
+        .setContent(`<a href="${svUrl}" target="_blank" style="text-decoration:none; font-weight:bold; color:#4285F4;">
+                        🚀 Open Street View here
+                     </a>`)
+        .openOn(map);
+});
+    });
+</script>
+</body>
+</html>
