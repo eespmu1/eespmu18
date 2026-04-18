@@ -12,64 +12,24 @@
         body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; overflow: hidden; }
         #map { height: 100vh; width: 100%; background: #fff; }
         
-       /* The main search container */
-.map-overlay {
-    position: absolute; 
-    bottom: 35px; /* Stayed above the coord bar */
-    right: 10px; 
-    width: 260px; /* Narrower for mobile */
-    max-width: 85vw; /* Never wider than 85% of the screen */
-    z-index: 1000;
-    background: rgba(255, 255, 255, 0.95); 
-    padding: 10px; 
-    border-radius: 8px;
-    box-shadow: 0 -2px 10px rgba(0,0,0,0.3);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
+        .map-overlay {
+            position: absolute; bottom: 35px; right: 10px; width: 260px; 
+            max-width: 85vw; z-index: 1000; background: rgba(255, 255, 255, 0.95); 
+            padding: 10px; border-radius: 8px; box-shadow: 0 -2px 10px rgba(0,0,0,0.3);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
 
-/* The "Hidden" or Minimized state */
-.map-overlay.minimized {
-    height: 24px;   /* Very short */
-    width: 240px;   /* Very narrow */
-    padding: 6px 10px;
-    overflow: hidden;
-    background: rgba(255, 255, 255, 0.8);
-}
-
-/* Ensure the header text shrinks when minimized */
-.map-overlay.minimized b {
-    font-size: 10px;
-    white-space: nowrap;
-}
-
-/* Hide the search box and nav completely when minimized */
-.map-overlay.minimized .search-box, 
-.map-overlay.minimized #status-text, 
-.map-overlay.minimized #search-nav {
-    display: none !important;
-}
-
-/* Mobile Specific Tweaks */
-@media (max-width: 600px) {
-    .map-overlay {
-        right: 5px;
-        bottom: 30px;
-        padding: 8px;
-    }
-    input {
-        font-size: 16px; /* Prevents iOS from auto-zooming on focus */
-    }
-}
-
+        .map-overlay.minimized { height: 24px; width: 120px; overflow: hidden; padding: 6px 10px; }
+        .map-overlay.minimized .search-box, .map-overlay.minimized #status-text, .map-overlay.minimized #search-nav { display: none !important; }
 
         .header-row { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 5px; }
         .hide-btn { cursor: pointer; background: #555; color: white; border: none; border-radius: 4px; padding: 2px 8px; font-size: 11px; }
 
         .search-box { display: flex; gap: 4px; margin-top: 10px; }
-        input { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+        input { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; }
         button.find-btn { cursor: pointer; padding: 8px; background: #007bff; color: white; border: none; border-radius: 4px; }
         
-        #status-text { font-size: 11px; margin-top: 8px; color: #d9534f; font-weight: bold; }
+        #status-text { font-size: 11px; margin-top: 8px; color: #d9534f; font-weight: bold; text-align: center; }
         #search-nav { display: flex; justify-content: space-between; margin-top: 8px; gap: 5px; }
         .nav-btn { font-size: 11px; flex: 1; padding: 6px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; }
 
@@ -79,12 +39,12 @@
             font-size: 11px; display: flex; align-items: center; padding-left: 10px; pointer-events: none;
         }
 
-        /* Neon Glow Effect for Points */
+        .qgis-label { background: white; border: 1px solid #333; padding: 5px; font-size: 11px; font-weight: bold; color: #333; border-radius: 4px; }
         .bright-point { filter: drop-shadow(0 0 4px rgba(0,0,0,0.5)); }
 
         @media (max-width: 600px) {
             .leaflet-draw-toolbar { margin-top: 60px !important; }
-            .map-overlay { width: 240px; right: 5px; }
+            .map-overlay { width: 220px; right: 5px; }
         }
     </style>
 </head>
@@ -95,17 +55,14 @@
 
 <div class="map-overlay" id="search-panel">
     <div class="header-row">
-        <b style="font-size: 12px;">Web Map by Dayamoy Ghosh,EE</b>
-        <button class="hide-btn" onclick="toggleSearch()">X</button>
+        <b style="font-size: 11px;">Dayamoy Ghosh, EE</b>
+        <button class="hide-btn" onclick="toggleSearch()">_</button>
     </div>
-    
     <div class="search-box">
-        <input type="text" id="search-input" placeholder="Search P-I or P-II...">
+        <input type="text" id="search-input" placeholder="Search boundary...">
         <button class="find-btn" onclick="performSearch()">Find</button>
     </div>
-    
-    <div id="status-text">Select Layers in Top-Right</div>
-    
+    <div id="status-text">Layers ready</div>
     <div id="search-nav" style="display:none;">
         <button class="nav-btn" onclick="cycleResults(-1)">← Prev</button>
         <button class="nav-btn" onclick="cycleResults(1)">Next →</button>
@@ -116,12 +73,13 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
 
 <script>
+    // 1. Initialize Map
     const map = L.map('map', { preferCanvas: true }).setView([23.92, 87.53], 12);
 
-    // --- GOOGLE BASEMAPS ---
+    // 2. Basemaps
     const googleStreets = L.tileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
         maxZoom: 22, subdomains:['mt0','mt1','mt2','mt3'], attribution: '© Google Maps'
-    }).addTo(map); // DEFAULT BASE
+    }).addTo(map);
 
     const googleHybrid = L.tileLayer('http://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
         maxZoom: 22, subdomains:['mt0','mt1','mt2','mt3'], attribution: '© Google Hybrid'
@@ -131,41 +89,22 @@
         maxZoom: 22, subdomains:['mt0','mt1','mt2','mt3'], attribution: '© Google Satellite'
     });
 
-    const baseMaps = {
-        "Google Street Map": googleStreets,
-        "Google Hybrid": googleHybrid,
-        "Google Satellite": googleSat
-    };
+    const baseMaps = { "Street Map": googleStreets, "Hybrid": googleHybrid, "Satellite": googleSat };
 
-    // --- DRAWING TOOLS ---
+    // 3. Drawing
     const drawnItems = new L.FeatureGroup().addTo(map);
     const drawControl = new L.Control.Draw({
         edit: { featureGroup: drawnItems },
-        draw: {
-            circle: true, rectangle: true, marker: true,
-            polyline: { shapeOptions: { color: '#f357a1', weight: 4 } },
-            polygon: { allowIntersection: false, showArea: true, shapeOptions: { color: '#4d90fe' } }
-        }
+        draw: { circle: true, rectangle: true, marker: true, polyline: true, polygon: true }
     });
     map.addControl(drawControl);
 
     map.on(L.Draw.Event.CREATED, (e) => {
         const layer = e.layer;
-        let content = "";
-        if (e.layerType === 'polyline') {
-            let distance = 0;
-            const latlngs = layer.getLatLngs();
-            for (let i = 0; i < latlngs.length - 1; i++) distance += latlngs[i].distanceTo(latlngs[i + 1]);
-            content = "Distance: " + (distance / 1000).toFixed(3) + " km";
-        } else if (e.layerType === 'polygon' || e.layerType === 'rectangle') {
-            const area = L.GeometryUtil.geodesicArea(layer.getLatLngs()[0]);
-            content = "Area: " + (area / 10000).toFixed(3) + " Ha";
-        }
-        if(content) layer.bindPopup(content).openPopup();
         drawnItems.addLayer(layer);
     });
 
-    // --- GEOJSON LOGIC ---
+    // 4. GeoJSON Logic
     let allLayers = [];
     let searchResults = [];
     let currentIndex = -1;
@@ -174,9 +113,9 @@
     const geojsonConfig = [
         { url: 'mouzabound.geojson', name: 'Mouza Boundary P-I', color: '#00fbff' },
         { url: 'mouzabound2.geojson', name: 'Mouza Boundary P-II', color: '#ff00ff' },
-        { url: 'wridd.geojson', name: 'WRIDD + WBADMIP I Scheme', color: '#FF4500', pointColor: '#FF4500' }, // OrangeRed
-        { url: 'WBADMIPII.geojson', name: 'WBADMIP PH-II Scheme', color: '#32CD32', pointColor: '#32CD32' }, // LimeGreen
-        { url: 'dg4.geojson', name: 'WBADMIP Proposed Scheme', color: '#0073ff', pointColor: '#0073ff' }
+        { url: 'wridd.geojson', name: 'WRIDD + WBADMIP I Scheme', color: '#FF4500' },
+        { url: 'WBADMIPII.geojson', name: 'WBADMIP PH-II Scheme', color: '#32CD32' },
+        { url: 'dg4.geojson', name: 'WBADMIP Proposed Scheme', color: '#0073ff' }
     ];
 
     const overlayMaps = {};
@@ -187,135 +126,142 @@
             const data = await res.json();
             L.geoJSON(data, {
                 pointToLayer: (feature, latlng) => {
-                    // Determine styling based on layer name
-                    let radius = 5;
-                    let fill = "#00ffff"; // default cyan
-                    
-                    if (config.name.includes('WBADMIP I Scheme')) {
-                        radius =6;
-                        fill = "#FF4500"; // Neon Orange
-                    } else if (config.name.includes('PH-II Scheme')) {
-                        radius = 8;
-                        fill = "#00FF00"; // Neon Green
-                    }
-
-                    return L.circleMarker(latlng, {
-                        radius: radius,
-                        fillColor: fill,
-                        color: "#fff",
-                        weight: 2,
-                        fillOpacity: 1,
-                        className: 'bright-point'
-                    });
+                    let fill = config.name.includes('PH-II') ? "#00FF00" : (config.name.includes('I Scheme') ? "#FF4500" : "#00ffff");
+                    return L.circleMarker(latlng, { radius: 6, fillColor: fill, color: "#fff", weight: 2, fillOpacity: 1, className: 'bright-point' });
                 },
                 style: (feature) => {
                     return { color: config.color, weight: 2, fillOpacity: 0.1 };
                 },
-               onEachFeature: (feature, layer) => {
-    allLayers.push({ layer: layer, group: group, configName: config.name });
-    
-    // 1. Extract properties (handling potential case-sensitivity)
-    const p = feature.properties;
-    const dist = p.district || p.DISTRICT || 'N/A';
-    const block = p.BLOCK || p.block || 'N/A';
-    const mouza = p.MOUZA || p.mouza || 'N/A';
+                onEachFeature: (feature, layer) => {
+                    allLayers.push({ layer: layer, group: group, configName: config.name });
+                    
+                    const p = feature.properties;
+                    
+                    // 1. Extract administrative properties
+                    const dist = p.district || p.DISTRICT || 'N/A';
+                    const block = p.BLOCK || p.block || 'N/A';
+                    const mouza = p.MOUZA || p.mouza || 'N/A';
+                    
+                    // 2. Extract MA only
+                    const maValue = p.MA || p.ma || p.Ma || 'N/A';
 
-    // 2. Create a multi-line HTML label
-    const hoverLabel = `
-        <div style="line-height: 1.4;">
-            <b style="color: #007bff;">Dist:</b> ${dist}<br>
-            <b style="color: #007bff;">Block:</b> ${block}<br>
-            <b style="color: #007bff;">Mouza:</b> ${mouza}
-        </div>
-    `;
+                    // 3. Create the multi-line HTML label (MA part only)
+                    const hoverLabel = `
+                        <div style="line-height: 1.4; min-width: 120px;">
+                            <b style="color: #007bff;">Dist:</b> ${dist}<br>
+                            <b style="color: #007bff;">Block:</b> ${block}<br>
+                            <b style="color: #007bff;">Mouza:</b> ${mouza}<br>
+                            <hr style="margin: 4px 0; border: 0; border-top: 1px solid #eee;">
+                            <b style="color: #28a745;">Mouza Area(Ha):</b> ${maValue}
+                        </div>
+                    `;
 
-    // 3. Bind the tooltip with custom styling
-    layer.bindTooltip(hoverLabel, { 
-        sticky: true,           // Makes the label follow the mouse
-        direction: 'auto',      // Prevents label from going off-screen
-        className: 'qgis-label', // Uses your existing CSS class
-        opacity: 0.9
-    });
-}
+                    layer.bindTooltip(hoverLabel, { 
+                        sticky: true, 
+                        className: 'qgis-label', 
+                        opacity: 0.9 
+                    });
+                }
             }).addTo(group);
-        } catch (e) { console.warn("Missing file: " + config.url); }
+        } catch (e) { 
+            console.warn("Missing file: " + config.url); 
+        }
     }
-
+    // Initialize Layers
     geojsonConfig.forEach(config => {
         const group = L.layerGroup();
         overlayMaps[config.name] = group;
         loadData(config, group);
     });
 
-   // Change collapsed: false to true
-L.control.layers(baseMaps, overlayMaps, { collapsed: true }).addTo(map);
+    L.control.layers(baseMaps, overlayMaps, { collapsed: true }).addTo(map);
 
-    // --- SEARCH LOGIC ---
+    // 5. Search & UI Functions
     function performSearch() {
-        const query = document.getElementById('search-input').value.trim().toLowerCase();
+        const q = document.getElementById('search-input').value.trim().toLowerCase();
         searchResults = []; currentIndex = -1;
-        if (!query) return;
+        if (!q) { document.getElementById('status-text').innerText = "Enter a search term"; return; }
 
-        allLayers.forEach(obj => {
-            if (obj.configName === 'Mouza Boundary P-I' || obj.configName === 'Mouza Boundary P-II') {
-                const props = obj.layer.feature.properties;
-                const match = Object.values(props).some(v => v && v.toString().toLowerCase().includes(query));
-                if (match) searchResults.push(obj);
-            }
-        });
+        searchResults = allLayers.filter(obj => 
+            (obj.configName.includes('P-I') || obj.configName.includes('P-II')) &&
+            Object.values(obj.layer.feature.properties).some(v => v && v.toString().toLowerCase().includes(q))
+        );
 
         if (searchResults.length > 0) {
             document.getElementById('search-nav').style.display = 'flex';
-            cycleResults(1);
+            cycleResults(1); 
         } else {
             document.getElementById('search-nav').style.display = 'none';
-            document.getElementById('status-text').innerText = "Not found in P-I or P-II.";
+            document.getElementById('status-text').innerText = "❌ No results found";
+            document.getElementById('status-text').style.color = "#d9534f";
         }
     }
 
     function cycleResults(dir) {
         if (searchResults.length === 0) return;
-        if (lastHighlighted) {
-            // Reset style - handle both circleMarkers and Polygons
-            if (lastHighlighted.setStyle) {
-                lastHighlighted.setStyle({ weight: 2, color: lastHighlighted.options.originalColor });
-            }
+        if (lastHighlighted && lastHighlighted.setStyle) {
+            lastHighlighted.setStyle({ weight: 2, color: lastHighlighted.options.originalColor });
         }
         currentIndex = (currentIndex + dir + searchResults.length) % searchResults.length;
         const target = searchResults[currentIndex];
-        
+
         if (!map.hasLayer(target.group)) map.addLayer(target.group);
-        
         if (!target.layer.options.originalColor) target.layer.options.originalColor = target.layer.options.color;
         
-        if (target.layer.setStyle) {
-            target.layer.setStyle({ color: 'yellow', weight: 6 });
-        }
+        if (target.layer.setStyle) target.layer.setStyle({ color: 'yellow', weight: 6 });
         
-        map.fitBounds(target.layer.getBounds ? target.layer.getBounds() : L.latLngBounds([target.layer.getLatLng()]));
+        if (target.layer.getBounds) { map.fitBounds(target.layer.getBounds()); } 
+        else { map.setView(target.layer.getLatLng(), 18); }
+        
         target.layer.openPopup();
         lastHighlighted = target.layer;
-        document.getElementById('status-text').innerText = `${currentIndex + 1} of ${searchResults.length} found`;
+
+        const statusBox = document.getElementById('status-text');
+        statusBox.innerHTML = `📍 Result ${currentIndex + 1} of ${searchResults.length}`;
+        statusBox.style.color = "#28a745";
     }
 
     function toggleSearch() { document.getElementById('search-panel').classList.toggle('minimized'); }
 
     map.on('mousemove', (e) => {
         document.getElementById('coords-info').innerText = `Lat: ${e.latlng.lat.toFixed(5)} | Lon: ${e.latlng.lng.toFixed(5)}`;
-
-map.on('contextmenu', function(e) {
-    const lat = e.latlng.lat;
-    const lng = e.latlng.lng;
-    const svUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`;
-    
-    L.popup()
-        .setLatLng(e.latlng)
-        .setContent(`<a href="${svUrl}" target="_blank" style="text-decoration:none; font-weight:bold; color:#4285F4;">
-                        🚀 Open Street View here
-                     </a>`)
-        .openOn(map);
-});
     });
+
+    map.on('contextmenu', function(e) {
+        const lat = e.latlng.lat;
+        const lng = e.latlng.lng;
+        const streetViewUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`;
+        
+        const popupContent = `
+            <div style="min-width: 160px; font-family: sans-serif;">
+                <b style="font-size: 13px;">Tools</b><hr>
+                <div id="elev-box" style="margin-bottom: 10px; text-align: center;">
+                    <button onclick="event.stopPropagation(); getElevationNow(${lat}, ${lng})" 
+                            style="width:100%; cursor:pointer; padding:6px; font-size:11px; background:#f8f9fa; border:1px solid #ccc; border-radius:4px;">
+                        ⛰️ Get Elevation
+                    </button>
+                </div>
+                <a href="${streetViewUrl}" target="_blank" 
+                   style="display:block; background:#4285F4; color:white; text-align:center; padding:8px; border-radius:4px; text-decoration:none; font-size:11px; font-weight:bold;">
+                   🚀 Street View
+                </a>
+            </div>`;
+
+        L.popup().setLatLng(e.latlng).setContent(popupContent).openOn(map);
+    });
+
+    async function getElevationNow(lat, lng) {
+        const box = document.getElementById('elev-box');
+        if (!box) return;
+        box.innerHTML = "<span style='font-size:11px; color:#666;'>📡 Loading...</span>";
+        try {
+            const res = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lng}`);
+            const data = await res.json();
+            if (data && data.elevation) {
+                box.innerHTML = `<div style="color:#155724; background:#d4edda; font-weight:bold; padding:5px; border-radius:4px; border:1px solid #c3e6cb;">Elev: ${data.elevation[0]}m</div>`;
+            } else { box.innerHTML = "<span style='color:red;'>No data</span>"; }
+        } catch (e) { box.innerHTML = "⚠️ Error"; }
+    }
 </script>
 </body>
 </html>
