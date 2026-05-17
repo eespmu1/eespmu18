@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unified Managed Web Map - Dayamoy Ghosh, EE</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+    
+    <script src="https://cdn.jsdelivr.net/npm/geotiff"></script>
+    <script src='https://api.mapbox.com/mapbox.js/plugins/leaflet-omnivore/v0.3.1/leaflet-omnivore.min.js'></script>
+
+    <style>
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; overflow: hidden; }
+        #map { height: 100vh; width: 100%; background: #fff; }
+        
+        /* New Instruction Modal Styles */
+        #instruction-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); z-index: 3000;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .modal-content {
+            background: white; padding: 25px; border-radius: 12px;
+            width: 90%; max-width: 450px; box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+            text-align: left; line-height: 1.6;
+        }
+        .modal-content h3 { margin-top: 0; color: #007bff; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .modal-content ul { padding-left: 20px; font-size: 14px; color: #333; }
+        .close-modal-btn {
+            display: block; width: 100%; padding: 10px; margin-top: 20px;
+            background: #28a745; color: white; border: none; border-radius: 6px;
+            font-weight: bold; cursor: pointer; text-align: center;
+        }
+
+        #analysis-panel {
+            position: absolute; top: 10px; left: 50px; width: 230px;
+            z-index: 1000; background: white; padding: 12px;
+            border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            display: none;
+        }
+
+        .map-overlay {
+            position: absolute; bottom: 35px; right: 10px; width: 290px; 
+            max-width: 90vw; z-index: 1000; background: rgba(255, 255, 255, 0.95); 
+            padding: 12px; border-radius: 8px; box-shadow: 0 -2px 10px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+        }
+
+        .map-overlay.minimized { height: 24px; width: 120px; overflow: hidden; padding: 6px 10px; }
+        .map-overlay.minimized > *:not(.header-row) { display: none !important; }
+
+        .header-row { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+        .hide-btn { cursor: pointer; background: #555; color: white; border: none; border-radius: 4px; padding: 2px 8px; font-size: 11px; }
+
+        .latlon-box { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; background: #fdfdfd; padding: 5px; border-radius: 4px; border: 1px solid #eee; }
+        .latlon-box input { flex: 1 1 80px; min-width: 70px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; }
+        .coord-btn { flex: 1 1 100%; cursor: pointer; padding: 8px; background: #28a745; color: white; border: none; border-radius: 4px; font-size: 12px; font-weight: bold; }
+
+        .upload-section { background: #f8f9fa; padding: 8px; border-radius: 4px; margin-top: 10px; border: 1px dashed #007bff; font-size: 11px; }
+        .search-box { display: flex; gap: 4px; margin-top: 10px; }
+        input[type="text"] { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+        button.find-btn { cursor: pointer; padding: 8px; background: #007bff; color: white; border: none; border-radius: 4px; }
+        
+        .crop-stat { margin: 5px 0; padding: 8px; border-radius: 4px; font-size: 12px; font-weight: bold; color: white; }
+        .s-crop { background: #f1c40f; color: black; }
+        .d-crop { background: #27ae60; }
+        .t-crop { background: #1e4620; }
+        .o-crop { background: #95a5a6; }
+        .total-area { background: #34495e; border: 1px solid #fff; }
+
+        #status-text { font-size: 11px; margin-top: 8px; color: #666; font-weight: bold; text-align: center; }
+        #coords-info {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 25px;
+            background: rgba(0, 0, 0, 0.85); color: white; z-index: 2000;
+            font-size: 11px; display: flex; align-items: center; padding-left: 10px; pointer-events: none;
+        }
+        .qgis-label { background: white; border: 1px solid #333; padding: 5px; font-size: 11px; font-weight: bold; color: #333; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+<div id="instruction-modal">
+    <div class="modal-content">
+        <h3>Web Map for Crop area (23-24) Calculation: Developed by Dayamoy Ghosh, Executive Engineer WRIDD: User Instructions</h3>
+        <ul>
+            <li><b>Crop Calculation:</b> Draw a polygon using the toolbar on the left covering the area you wish to analyze.</li>
+            <li><b>KML Analysis:</b> Upload a KML file to view boundaries and automatically trigger area calculation.</li>
+            <li><b>Coordinate Search:</b> Enter Latitude and Longitude to place a marker at a specific location.</li>
+            <li><b>Administrative Search:</b> Use the search box to find specific Mouza or District boundaries.</li>
+        </ul>
+        <button class="close-modal-btn" onclick="document.getElementById('instruction-modal').style.display='none'">Got it!</button>
+    </div>
+</div>
+
+<div id="coords-info">Lat: 0.000 | Lon: 0.000</div>
+<div id="map"></div>
+
+<div id="analysis-panel">
+    <b style="font-size: 13px;">Crop Area Analysis(23-24) (Ha)</b><hr>
+    <div class="crop-stat s-crop">Single: <span id="val1">0.00</span> Ha</div>
+    <div class="crop-stat d-crop">Double: <span id="val2">0.00</span> Ha</div>
+    <div class="crop-stat t-crop">Triple: <span id="val3">0.00</span> Ha</div>
+    <div class="crop-stat o-crop">Other/Fallow: <span id="val0">0.00</span> Ha</div>
+    <div class="crop-stat total-area">Total Area: <span id="valTotal">0.00</span> Ha</div>
+    <button onclick="document.getElementById('analysis-panel').style.display='none'" style="width:100%; margin-top:5px; cursor:pointer; padding:5px;">Close Analysis</button>
+</div>
+
+<div class="map-overlay" id="search-panel">
+    <div class="header-row">
+        <b style="font-size: 11px;">Dayamoy Ghosh, EE</b>
+        <button class="hide-btn" onclick="toggleSearch()">_</button>
+    </div>
+
+    <div class="latlon-box">
+        <input type="number" id="input-lat" placeholder="Lat (e.g. 22.92)" step="any">
+        <input type="number" id="input-lon" placeholder="Lon (e.g. 88.44)" step="any">
+        <button class="coord-btn" onclick="goToCoords()">Go to Coordinates</button>
+    </div>
+
+    <div class="upload-section">
+        <b>Upload KML Boundary</b><br>
+        <input type="file" id="kml-upload" accept=".kml" style="font-size: 10px; width: 100%; margin-top: 5px;">
+    </div>
+
+    <div class="search-box">
+        <input type="text" id="search-input" placeholder="Search Mouza/Dist...">
+        <button class="find-btn" onclick="performSearch()">Find</button>
+    </div>
+
+    <div id="status-text">System Active</div>
+    <div id="search-nav" style="display:none; margin-top:5px;">
+        <button onclick="cycleResults(-1)" style="font-size:10px;">← Prev</button>
+        <button onclick="cycleResults(1)" style="font-size:10px;">Next →</button>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+<script>
+    const map = L.map('map', { preferCanvas: true }).setView([23.92, 87.53], 12);
+    const googleHybrid = L.tileLayer('http://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+        maxZoom: 22, subdomains:['mt0','mt1','mt2','mt3'], attribution: '© Google Hybrid'
+    }).addTo(map);
+
+    const googleStreets = L.tileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        maxZoom: 22, subdomains:['mt0','mt1','mt2','mt3'], attribution: '© Google Streets'
+    });
+
+    const baseMaps = { "Hybrid Satellite": googleHybrid, "Street Map": googleStreets };
+
+    let calcData, calcWidth, calcHeight, calcBbox; 
+    let displayLayer = L.layerGroup(); 
+    let searchMarker = null;
+    let allLayers = [];
+    let searchResults = [];
+    let currentIndex = -1;
+    let lastHighlighted = null;
+
+    const drawnItems = new L.FeatureGroup().addTo(map);
+    const drawControl = new L.Control.Draw({
+        edit: { featureGroup: drawnItems },
+        draw: { circle: false, rectangle: true, marker: true, polyline: true, polygon: true }
+    });
+    map.addControl(drawControl);
+
+    map.on(L.Draw.Event.CREATED, (e) => {
+        drawnItems.clearLayers();
+        drawnItems.addLayer(e.layer);
+        if(calcData) runPrecisionCalculation(e.layer);
+    });
+
+    const geojsonConfig = [
+        { url: 'mouzabound.geojson', name: 'Mouza Boundary P-I', color: '#00fbff' },
+        { url: 'mouzabound2.geojson', name: 'Mouza Boundary P-II', color: '#ff00ff' },
+        { url: 'wridd.geojson', name: 'WRIDD + WBADMIP I Scheme', color: '#FF4500' },
+        { url: 'WBADMIPII.geojson', name: 'WBADMIP PH-II Scheme', color: '#32CD32' },
+        { url: 'dg4.geojson', name: 'WBADMIP Proposed Scheme', color: '#0073ff' }
+    ];
+
+    const overlayMaps = {};
+
+    async function loadGeoJson(config, group) {
+        try {
+            const res = await fetch(config.url);
+            const data = await res.json();
+            L.geoJSON(data, {
+                pointToLayer: (feature, latlng) => {
+                    let fill = config.name.includes('PH-II') ? "#00FF00" : (config.name.includes('I Scheme') ? "#FF4500" : "#00ffff");
+                    return L.circleMarker(latlng, { radius: 6, fillColor: fill, color: "#fff", weight: 2, fillOpacity: 1 });
+                },
+                style: (feature) => { return { color: config.color, weight: 2, fillOpacity: 0.1 }; },
+                onEachFeature: (feature, layer) => {
+                    allLayers.push({ layer: layer, group: group, configName: config.name });
+                    const p = feature.properties;
+                    const hoverLabel = `<div style="font-size:11px;"><b>Dist:</b> ${p.DISTRICT || 'N/A'}<br><b>Block:</b> ${p.BLOCK || 'N/A'}<br><b>Mouza:</b> ${p.MOUZA || 'N/A'}<br><hr><b>Area:</b> ${p.MA || 'N/A'} Ha</div>`;
+                    layer.bindTooltip(hoverLabel, { sticky: true, className: 'qgis-label', opacity: 0.9 });
+                }
+            }).addTo(group);
+        } catch (e) { console.warn("GeoJSON skipped: " + config.url); }
+    }
+
+    async function initTifs() {
+        try {
+            const resDisp = await fetch('Display_Crop_2025.tif');
+            const bufDisp = await resDisp.arrayBuffer();
+            const tiffDisp = await GeoTIFF.fromArrayBuffer(bufDisp);
+            const imgDisp = await tiffDisp.getImage();
+            const dataDisp = await imgDisp.readRasters();
+            const canvas = document.createElement('canvas');
+            canvas.width = imgDisp.getWidth(); canvas.height = imgDisp.getHeight();
+            const ctx = canvas.getContext('2d');
+            const idata = ctx.createImageData(canvas.width, canvas.height);
+            for (let i = 0; i < dataDisp[0].length; i++) {
+                let v = dataDisp[0][i];
+                let r=0, g=0, b=0, a=0;
+                if (v === 1) { r=241; g=196; b=15; a=180; }
+                else if (v === 2) { r=39; g=174; b=96; a=180; }
+                else if (v === 3) { r=30; g=70; b=32; a=180; }
+                idata.data[i*4]=r; idata.data[i*4+1]=g; idata.data[i*4+2]=b; idata.data[i*4+3]=a;
+            }
+            ctx.putImageData(idata, 0, 0);
+            const bbox = imgDisp.getBoundingBox();
+            L.imageOverlay(canvas.toDataURL(), [[bbox[1], bbox[0]], [bbox[3], bbox[2]]], {opacity: 0.7}).addTo(displayLayer);
+        } catch (e) { console.warn("Display TIF error"); }
+
+        try {
+            const resCalc = await fetch('West_Bengal_Cropping_Intensity_2023.tif');
+            const bufCalc = await resCalc.arrayBuffer();
+            const tiffCalc = await GeoTIFF.fromArrayBuffer(bufCalc);
+            const imgCalc = await tiffCalc.getImage();
+            calcData = await imgCalc.readRasters();
+            calcWidth = imgCalc.getWidth();
+            calcHeight = imgCalc.getHeight();
+            calcBbox = imgCalc.getBoundingBox();
+            document.getElementById('status-text').innerText = "Precision Systems Ready";
+            document.getElementById('status-text').style.color = "#28a745";
+        } catch (e) { document.getElementById('status-text').innerText = "TIF Engine missing"; }
+    }
+
+    function goToCoords() {
+        const lat = parseFloat(document.getElementById('input-lat').value);
+        const lon = parseFloat(document.getElementById('input-lon').value);
+        if (isNaN(lat) || isNaN(lon)) { alert("Invalid Coords"); return; }
+        if (searchMarker) map.removeLayer(searchMarker);
+        searchMarker = L.marker([lat, lon]).addTo(map).bindPopup(`Lat: ${lat}<br>Lon: ${lon}`).openPopup();
+        map.setView([lat, lon], 18);
+    }
+
+    document.getElementById('kml-upload').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            drawnItems.clearLayers();
+            const runLayer = omnivore.kml.parse(event.target.result)
+                .on('ready', function() {
+                    map.fitBounds(runLayer.getBounds());
+                    runLayer.eachLayer(function(layer) {
+                        if (layer instanceof L.Polygon || layer instanceof L.Rectangle) {
+                            layer.setStyle({ color: '#ff0000', weight: 4, fillOpacity: 0.3 });
+                            drawnItems.addLayer(layer);
+                            if(calcData) runPrecisionCalculation(layer);
+                        }
+                    });
+                }).addTo(drawnItems);
+        };
+        reader.readAsText(file);
+    });
+
+    function runPrecisionCalculation(layer) {
+        document.getElementById('analysis-panel').style.display = 'block';
+        let c0 = 0, c1 = 0, c2 = 0, c3 = 0;
+        const b = layer.getBounds();
+        const rx = (calcBbox[2] - calcBbox[0]) / calcWidth;
+        const ry = (calcBbox[3] - calcBbox[1]) / calcHeight;
+        let sx = Math.max(0, Math.floor((b.getWest() - calcBbox[0]) / rx));
+        let ex = Math.min(calcWidth, Math.ceil((b.getEast() - calcBbox[0]) / rx));
+        let sy = Math.max(0, Math.floor((calcBbox[3] - b.getNorth()) / ry));
+        let ey = Math.min(calcHeight, Math.ceil((calcBbox[3] - b.getSouth()) / ry));
+        for (let y = sy; y < ey; y++) {
+            for (let x = sx; x < ex; x++) {
+                const idx = y * calcWidth + x;
+                const v = calcData[0][idx];
+                let lat = calcBbox[3] - (y * ry);
+                let lng = calcBbox[0] + (x * rx);
+                if (isPointInPoly(L.latLng(lat, lng), layer)) {
+                    if (v === 1) c1++; 
+                    else if (v === 2) c2++; 
+                    else if (v === 3) c3++;
+                    else c0++;
+                }
+            }
+        }
+        const sHa = c1 * 0.09, dHa = c2 * 0.09, tHa = c3 * 0.09, oHa = c0 * 0.09;
+        document.getElementById('val1').innerText = sHa.toFixed(2);
+        document.getElementById('val2').innerText = dHa.toFixed(2);
+        document.getElementById('val3').innerText = tHa.toFixed(2);
+        document.getElementById('val0').innerText = oHa.toFixed(2);
+        document.getElementById('valTotal').innerText = (sHa + dHa + tHa + oHa).toFixed(2);
+    }
+
+    function isPointInPoly(pt, poly) {
+        let inside = false;
+        let x = pt.lng, y = pt.lat;
+        let latlngs = poly.getLatLngs();
+        if (Array.isArray(latlngs[0][0])) latlngs = latlngs[0]; 
+        const vs = Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
+        for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+            let xi = vs[i].lng, yi = vs[i].lat;
+            let xj = vs[j].lng, yj = vs[j].lat;
+            let intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+            if (intersect) inside = !inside;
+        }
+        return inside;
+    }
+
+    function performSearch() {
+        const q = document.getElementById('search-input').value.trim().toLowerCase();
+        searchResults = []; currentIndex = -1;
+        if (!q) return;
+        searchResults = allLayers.filter(obj => 
+            Object.values(obj.layer.feature.properties).some(v => v && v.toString().toLowerCase().includes(q))
+        );
+        if (searchResults.length > 0) {
+            document.getElementById('search-nav').style.display = 'flex';
+            cycleResults(1); 
+        } else {
+            document.getElementById('status-text').innerText = "❌ Not found";
+        }
+    }
+
+    function cycleResults(dir) {
+        if (searchResults.length === 0) return;
+        if (lastHighlighted && lastHighlighted.setStyle) {
+            lastHighlighted.setStyle({ weight: 2, color: lastHighlighted.options.originalColor || lastHighlighted.options.color });
+        }
+        currentIndex = (currentIndex + dir + searchResults.length) % searchResults.length;
+        const target = searchResults[currentIndex];
+        if (!map.hasLayer(target.group)) map.addLayer(target.group);
+        if (!target.layer.options.originalColor) target.layer.options.originalColor = target.layer.options.color;
+        if (target.layer.setStyle) target.layer.setStyle({ color: 'yellow', weight: 6 });
+        map.fitBounds(target.layer.getBounds());
+        lastHighlighted = target.layer;
+        document.getElementById('status-text').innerText = `📍 Result ${currentIndex + 1}/${searchResults.length}`;
+    }
+
+    geojsonConfig.forEach(config => {
+        const group = L.layerGroup(); overlayMaps[config.name] = group; loadGeoJson(config, group);
+    });
+
+    overlayMaps["Crop Display Layer 2025"] = displayLayer;
+    L.control.layers(baseMaps, overlayMaps, { collapsed: true }).addTo(map);
+    initTifs();
+
+    function toggleSearch() { document.getElementById('search-panel').classList.toggle('minimized'); }
+    map.on('mousemove', (e) => { document.getElementById('coords-info').innerText = `Lat: ${e.latlng.lat.toFixed(5)} | Lon: ${e.latlng.lng.toFixed(5)}`; });
+</script>
+</body>
+</html>
