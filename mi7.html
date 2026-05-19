@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Map for Monitoring of Water Bodies</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: hidden;
+        }
+        #map {
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        
+        /* Floating Interface Styling */
+        #top-panel {
+            position: absolute;
+            top: 15px;
+            left: 50px;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 12px 18px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.25);
+            max-width: 420px;
+            border-left: 5px solid #0078ff;
+        }
+        h2 {
+            margin: 0 0 4px 0;
+            font-size: 16px;
+            color: #111;
+        }
+        .counter-badge {
+            background: #e6f2ff;
+            color: #0061c7;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 13px;
+            display: inline-block;
+            margin-bottom: 10px;
+            line-height: 1.4;
+        }
+        
+        /* Coordinate Search Inputs */
+        .search-group {
+            display: flex;
+            gap: 5px;
+            margin-top: 5px;
+        }
+        .search-group input {
+            width: 110px;
+            padding: 6px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .search-btn {
+            background: #0078ff;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+        .search-btn:hover {
+            background: #0056b3;
+        }
+        
+        /* Startup Announcement Modal Overlay */
+        #notice-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            backdrop-filter: blur(3px);
+        }
+        .modal-content {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            max-width: 550px;
+            width: 90%;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            border-top: 6px solid #ff4a4a;
+            animation: modalFadeIn 0.3s ease-out;
+        }
+        .modal-header {
+            color: #d32f2f;
+            font-size: 18px;
+            font-weight: bold;
+            margin-top: 0;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            line-height: 1.4;
+        }
+        .modal-body {
+            color: #333;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            text-align: justify;
+        }
+        .close-btn {
+            background: #222;
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            float: right;
+            transition: background 0.2s;
+        }
+        .close-btn:hover {
+            background: #444;
+        }
+        
+        @keyframes modalFadeIn {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        /* Custom style for map popups */
+        .leaflet-popup-content-wrapper {
+            border-radius: 6px;
+            padding: 5px;
+        }
+        .popup-table {
+            font-size: 12px;
+            border-collapse: collapse;
+            width: 100%;
+            max-height: 200px;
+            overflow-y: auto;
+            display: block;
+        }
+        .popup-table tr:nth-child(even) { background-color: #f9f9f9; }
+        .popup-table td {
+            padding: 4px 6px;
+            border-bottom: 1px solid #eee;
+            vertical-align: top;
+        }
+        .popup-table td.field-name {
+            font-weight: bold;
+            color: #555;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Startup Notice Modal -->
+    <div id="notice-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                Web Map for Monitoring of WATER Bodies Captured in the 2nd Census of Water Bodies
+            </div>
+            <div class="modal-body">
+              The map has been prepared based on the data available on the Census Portal as on 19.05.2026.
+Concerned Executive Engineers and DLOs are requested to verify the locations of the water bodies by checking the respective layers available at the top-right corner of the map and ensure that all water bodies within their jurisdiction have been properly canvassed.
+            </div>
+            <button class="close-btn" onclick="closeNotice()">Close Map Notice</button>
+            <div style="clear: both;"></div>
+        </div>
+    </div>
+
+    <!-- Active Statistics and Search UI Panel -->
+    <div id="top-panel">
+        <h2>Water Bodies Monitoring Map Developed by : Dayamoy Ghosh, EE</h2>
+        <div id="counter" class="counter-badge">Loading Layer Data...</div>
+        
+        <div style="font-size: 11px; font-weight: bold; color: #555; margin-bottom: 3px;">SEARCH BY COORDINATES</div>
+        <div class="search-group">
+            <input type="number" id="search-lat" placeholder="Latitude (e.g. 22.9)" step="any">
+            <input type="number" id="search-lon" placeholder="Longitude (e.g. 88.3)" step="any">
+            <button class="search-btn" onclick="searchCoordinates()">Go</button>
+        </div>
+    </div>
+
+    <!-- Map container -->
+    <div id="map"></div>
+
+    <!-- Leaflet.js Script -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- PapaParse Script to read CSV quickly inside the client -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <script>
+        // Close modal view handler
+        function closeNotice() {
+            document.getElementById('notice-modal').style.display = 'none';
+        }
+
+        // Initialize Leaflet Map forcing canvas rendering to smoothly handle tens of thousands of vectors
+        const map = L.map('map', {
+            preferCanvas: true
+        }).setView([22.90, 88.15], 9); // Approximate default center coordinates near Hooghly, West Bengal
+
+        // 1. Google Hybrid Satellite Map Layer Configuration (Permanently pinned to the background)
+        const googleHybrid = L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', {
+            maxZoom: 20,
+            subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+            attribution: '© Google Maps'
+        }).addTo(map);
+
+        // Create specific layer groups for target districts
+        const districtLayers = {
+            "Hooghly District": L.layerGroup(),
+            "Bankura District": L.layerGroup(),
+            "Birbhum District": L.layerGroup() 
+
+            // Add more district layers here if necessary
+        };
+
+        // Pass districtLayers as the FIRST argument (base layers). This changes selection bubbles into 
+        // Radio Buttons, ensuring ONLY ONE district layer can ever be turned on at a time.
+        // Left the second argument (overlays) blank so Google Hybrid option doesn't show up at all.
+        const layerControl = L.control.layers(districtLayers, null, { collapsed: false }).addTo(map);
+        
+        // Active tracking properties for runtime data swapping
+        let activeLayerName = "Hooghly District"; 
+        districtLayers[activeLayerName].addTo(map); // Add default base active visibility
+
+        // Global pinpoint helper container for custom searches
+        let searchMarker = null;
+
+        // Configuration mapping for local CSV layer lookups
+        const csvFilesRegistry = {
+            "Hooghly District": "hooghly.csv",
+            "Bankura District": "bankura.csv",
+            "Birbhum District": "birbhum.csv" 
+
+        };
+
+        // Keep track of layers that have already been completely loaded & parsed
+        const loadedLayersRegistry = {};
+
+        // 2. Automated File Loading Routine Pipeline 
+        function loadDistrictCsv(layerName, filePath) {
+            const targetGroup = districtLayers[layerName];
+            
+            // If the data was already parsed before, don't download it again. Just re-render message metrics.
+            if (loadedLayersRegistry[layerName]) {
+                if (layerName === activeLayerName) {
+                    processAndPlotCsv(loadedLayersRegistry[layerName], targetGroup, layerName);
+                }
+                return;
+            }
+            
+            if (layerName === activeLayerName) {
+                document.getElementById('counter').textContent = "Reading data from " + filePath + "...";
+            }
+
+            Papa.parse(filePath, {
+                download: true, // Flags papaparse to fetch file via web server endpoint requests asynchronously
+                header: true,
+                skipEmptyLines: true, animate: false,
+                complete: function(results) {
+                    // Cache results array locally to minimize network re-fetches
+                    loadedLayersRegistry[layerName] = results.data;
+                    processAndPlotCsv(results.data, targetGroup, layerName);
+                },
+                error: function(err) {
+                    console.error("Error path reading: " + filePath, err);
+                    if (layerName === activeLayerName) {
+                        document.getElementById('counter').textContent = `File "${filePath}" required. Place file in directory context to map dynamically.`;
+                    }
+                }
+            });
+        }
+
+        // 3. Circle Feature Mapping with responsive styling attributes
+        function processAndPlotCsv(dataArray, layerGroup, layerName) {
+            let validPointsCount = 0;
+            const boundingBoxGroup = [];
+
+            // Only generate pins visually if the group layer doesn't have layers built inside it yet
+            const layerNeedsMarkers = layerGroup.getLayers().length === 0;
+
+            dataArray.forEach(row => {
+                // Flexible lowercase trim evaluation strategy for robust lat/lon parsing
+                const latitudeKey = Object.keys(row).find(k => k.toLowerCase().trim() === 'latitude' || k.toLowerCase().trim() === 'lat');
+                const longitudeKey = Object.keys(row).find(k => k.toLowerCase().trim() === 'longitude' || k.toLowerCase().trim() === 'lon' || k.toLowerCase().trim() === 'lng');
+
+                if (latitudeKey && longitudeKey) {
+                    const latVal = parseFloat(row[latitudeKey]);
+                    const lonVal = parseFloat(row[longitudeKey]);
+
+                    if (!isNaN(latVal) && !isNaN(lonVal)) {
+                        validPointsCount++;
+
+                        if (layerNeedsMarkers) {
+                            // Build structured HTML string representation of absolute row details
+                            let infoTableHtml = '<table class="popup-table">';
+                            for (const [columnName, cellValue] of Object.entries(row)) {
+                                infoTableHtml += `<tr><td class="field-name">${columnName}</td><td>${cellValue || 'N/A'}</td></tr>`;
+                            }
+                            infoTableHtml += '</table>';
+
+                            // Bright Circle Marker Styling Layout Options
+                            const waterBodyMarker = L.circleMarker([latVal, lonVal], {
+                                radius: 6,
+                                fillColor: '#00ffff',     // Cyan neon color for dark satellite base map backgrounds
+                                color: '#ffffff',         // White rim wrap boundary accent accentuating visibility
+                                weight: 1.5,
+                                opacity: 1,
+                                fillOpacity: 0.95
+                            }).bindPopup(infoTableHtml, { maxWidth: 320 });
+
+                            layerGroup.addLayer(waterBodyMarker);
+                        }
+                        
+                        boundingBoxGroup.push([latVal, lonVal]);
+                    }
+                }
+            });
+
+            // 5. Compute metric values to evaluate live counts onto active control banner
+            if (layerName === activeLayerName) {
+                document.getElementById('counter').textContent = `Total ${validPointsCount.toLocaleString()} Nos. Water Bodies have been captured so far for ${layerName}.`;
+                
+                // Readjust boundaries dynamically based on coordinates parsed
+                if (boundingBoxGroup.length > 0) {
+                    map.fitBounds(boundingBoxGroup, { padding: [40, 40] });
+                }
+            }
+        }
+
+        // Initialize fetching processes for default structures natively on load
+        loadDistrictCsv("Hooghly District", csvFilesRegistry["Hooghly District"]);
+        loadDistrictCsv("Bankura District", csvFilesRegistry["Bankura District"]);
+        loadDistrictCsv("Birbhum District", csvFilesRegistry["Birbhum District"]);
+        // Listen for user switching radio buttons inside the layer menu panel
+        map.on('baselayerchange', function(event) {
+            // Filter out base map engine instances from re-counting logic processes
+            if (event.name !== "Google Hybrid Satellite") {
+                activeLayerName = event.name;
+                loadDistrictCsv(activeLayerName, csvFilesRegistry[activeLayerName]);
+            }
+        });
+
+        // 6. Coordinate Search System Functionality
+        function searchCoordinates() {
+            const latitudeInput = parseFloat(document.getElementById('search-lat').value);
+            const longitudeInput = parseFloat(document.getElementById('search-lon').value);
+
+            if (isNaN(latitudeInput) || isNaN(longitudeInput)) {
+                alert("Please input valid target numbers in both coordinate text fields.");
+                return;
+            }
+
+            // Boundary validation logic filters out wild anomalies
+            if (latitudeInput < -90 || latitudeInput > 90 || longitudeInput < -180 || longitudeInput > 180) {
+                alert("Coordinates outside true global limits. Range limits: Latitude (-90 to 90), Longitude (-180 to 180).");
+                return;
+            }
+
+            // Clean old custom coordinate points before printing new ones
+            if (searchMarker) {
+                map.removeLayer(searchMarker);
+            }
+
+            // High brightness Red crosshair circle configuration highlights user search matches
+            searchMarker = L.circleMarker([latitudeInput, longitudeInput], {
+                radius: 10,
+                fillColor: '#ff0055',
+                color: '#ffffff',
+                weight: 2.5,
+                opacity: 1,
+                fillOpacity: 0.85
+            }).addTo(map);
+
+            searchMarker.bindPopup(`<strong>Target Found Location:</strong><br>Lat: ${latitudeInput}<br>Long: ${longitudeInput}`).openPopup();
+            map.setView([latitudeInput, longitudeInput], 15); // Zooms target destination heavily to map surface details
+        }
+    </script>
+</body>
+</html>
