@@ -3,7 +3,8 @@ const externalLayers = [
     'layers/mouza.js',
     'layers/mouza2.js', 
     'layers/street.js',
-    'layers/measure.js' 
+    'layers/measure.js', 
+    'layers/latlong.js'
 
 ];
 
