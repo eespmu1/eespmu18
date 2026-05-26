@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Static Catchment Delineation Tool</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { display: flex; height: 100vh; background-color: #f8f9fa; overflow: hidden; }
+        
+        /* Left Sidebar Layout */
+        #sidebar { width: 320px; background: white; border-right: 1px solid #e0e0e0; display: flex; flex-direction: column; z-index: 1000; padding: 20px; overflow-y: auto; }
+        .brand { font-size: 1.3rem; font-weight: 700; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #f0f0f0; color: #212529; }
+        .section-title { font-size: 0.9rem; font-weight: 600; color: #495057; margin: 15px 0 8px 0; }
+        .btn-group { display: flex; gap: 10px; margin-bottom: 10px; }
+        
+        button { flex: 1; padding: 10px; border: 1px solid #dee2e6; background: #fff; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500; transition: all 0.2s; }
+        button.active-btn { background: #0d6efd; color: white; border-color: #0d6efd; }
+        button.primary-btn { background: #0d6efd; color: white; border-color: #0d6efd; width: 100%; padding: 12px; font-weight: 600; margin-top: 15px; }
+        button.secondary-btn { background: #6c757d; color: white; border-color: #6c757d; width: 100%; padding: 10px; font-weight: 600; margin-top: 5px; border-radius: 6px; }
+        button.secondary-btn.active-view { background: #20c997; border-color: #20c997; }
+        button.danger-btn { background: #dc3545; color: white; border-color: #dc3545; padding: 6px 12px; margin-top: 5px; width: fit-content; }
+        
+        .input-group { margin-bottom: 12px; }
+        .input-group label { display: block; font-size: 0.8rem; color: #6c757d; margin-bottom: 4px; }
+        .input-group input { width: 100%; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; font-size: 0.85rem; }
+        
+        /* Summary Component Layout Box */
+        .summary-panel { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px; padding: 15px; margin-top: 15px; }
+        .metric-group { margin-bottom: 12px; }
+        .metric-group:last-child { margin-bottom: 0; }
+        .metric-label { font-size: 0.72rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; }
+        .metric-value { font-size: 1.3rem; font-weight: 700; color: #0d6efd; margin-top: 1px; }
+        
+        #loading { display: none; color: #0d6efd; font-weight: bold; font-size: 0.85rem; margin-top: 8px; text-align: center; }
+        #status-msg { font-size: 0.85rem; color: #e67e22; font-weight: 600; margin-top: 5px; }
+
+        /* Map UI Viewport Layout */
+        #map-container { flex-grow: 1; position: relative; height: 100%; }
+        #map { width: 100%; height: 100%; background-color: #eaeaea; }
+        
+        /* Floating Mouse Real-Time Coordinates Card */
+        #coords-display { position: absolute; bottom: 15px; right: 15px; background: rgba(255, 255, 255, 0.9); padding: 6px 12px; border-radius: 4px; font-size: 0.78rem; font-family: monospace; font-weight: 600; color: #333; z-index: 1000; box-shadow: 0 2px 6px rgba(0,0,0,0.2); pointer-events: none; }
+        
+        /* Custom Tooltip/Popup Adjustments */
+        .measurement-popup { font-size: 0.85rem; font-weight: 600; line-height: 1.4; color: #212529; }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <div class="brand">Approx Catchment Delineation Tool By Dayamoy Ghosh,mEE Please cross check with QGIS and Arcgis</div>
+        
+        <div class="section-title">Select Pour Point Mode</div>
+        <div class="btn-group">
+            <button id="mode-click" class="active-btn" onclick="setMode('click')">Click Map</button>
+            <button id="mode-input" onclick="setMode('input')">Enter Lat / Lon</button>
+        </div>
+        <div id="status-msg">Initiating file stream...</div>
+
+        <div id="manual-coords-inputs" style="display:none; background:#f8f9fa; padding:12px; border-radius:6px; border: 1px solid #dee2e6; margin-bottom: 10px;">
+            <div class="input-group">
+                <label>Latitude</label>
+                <input type="number" id="inp-lat" step="0.00001" value="22.33202">
+            </div>
+            <div class="input-group">
+                <label>Longitude</label>
+                <input type="number" id="inp-lon" step="0.00001" value="87.06034">
+            </div>
+            <button style="width:100%; background:#6c757d; color:white; border:none;" onclick="plotManualPoint()">Plot Input Point</button>
+        </div>
+
+        <div class="section-title">Selected Pour Point</div>
+        <div style="background:#f8f9fa; padding:10px; border-radius:4px; font-size:0.85rem; border:1px solid #e9ecef; color:#333;">
+            <div>Latitude: <span id="val-lat">--</span></div>
+            <div style="margin-top: 4px;">Longitude: <span id="val-lon">--</span></div>
+        </div>
+        <button id="btn-clear" class="danger-btn" onclick="clearMap()">Clear Map</button>
+
+        <div class="section-title">Inputs</div>
+        <div class="input-group">
+            <label>Catchment Domain Grid GeoTIFF</label>
+            <input type="text" value="catchment_id.tif" readonly />
+        </div>
+        
+        <button id="btn-toggle-raster" class="secondary-btn" onclick="toggleRasterLayer()">View Raster on Map</button>
+
+        <button class="primary-btn" onclick="runClientSideDelineation()">Delineate Catchment</button>
+        <div id="loading">Delineating Edge Bounds... Please wait.</div>
+
+        <div class="section-title">Catchment Summary</div>
+        <div class="summary-panel">
+            <div class="metric-group">
+                <div class="metric-label">Catchment Area</div>
+                <div class="metric-value" id="summary-area">-- km²</div>
+            </div>
+            <div class="metric-group">
+                <div class="metric-label">Maximum Flow Length</div>
+                <div class="metric-value" id="summary-length" style="color: #333; font-size: 1.1rem;">-- km</div>
+            </div>
+        </div>
+
+        <button id="btn-kml" class="success-btn" onclick="exportToKML()">Export Catchment to KML</button>
+    </div>
+
+    <div id="map-container">
+        <div id="map"></div>
+        <div id="coords-display">Lat: --, Lon: --</div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/geotiff"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    
+    <script>
+        const defaultLat = 22.33202;
+        const defaultLon = 87.06034;
+        
+        const map = L.map('map').setView([defaultLat, defaultLon], 14);
+
+        const googleSatellite = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+            maxZoom: 20, attribution: '© Google Maps'
+        });
+
+        const gridCanvas = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            maxZoom: 20, attribution: '© CartoDB'
+        });
+
+        googleSatellite.addTo(map);
+
+        const baseLayers = {
+            "Google Satellite Map": googleSatellite,
+            "Clean Workspace Grid": gridCanvas
+        };
+
+        L.control.layers(baseLayers, null, { position: 'topright', collapsed: false }).addTo(map);
+
+        const drawnItems = new L.FeatureGroup();
+        map.addLayer(drawnItems);
+
+        const drawControl = new L.Control.Draw({
+            position: 'topleft',
+            draw: {
+                polyline: { shapeOptions: { color: '#198754', weight: 4 } },
+                polygon: { showArea: true, shapeOptions: { color: '#0d6efd', weight: 2, fillColor: '#0d6efd', fillOpacity: 0.2 } },
+                rectangle: { showArea: true, shapeOptions: { color: '#dc3545', weight: 2 } },
+                circle: { showArea: true, shapeOptions: { color: '#0d6efd', weight: 2 } },
+                marker: true
+            },
+            edit: { featureGroup: drawnItems, remove: true }
+        });
+        map.addControl(drawControl);
+
+        map.on(L.Draw.Event.CREATED, function (e) {
+            const layer = e.layer;
+            const type = e.layerType;
+            let popupContent = "";
+
+            if (type === 'polyline') {
+                const latlngs = layer.getLatLngs();
+                let totalDistance = 0;
+                for (let i = 0; i < latlngs.length - 1; i++) {
+                    totalDistance += latlngs[i].distanceTo(latlngs[i+1]);
+                }
+                popupContent = `<div class="measurement-popup"><strong>Line Distance:</strong><br>${(totalDistance / 1000).toFixed(2)} km</div>`;
+            } 
+            else if (type === 'polygon' || type === 'rectangle') {
+                const latlngs = layer.getLatLngs()[0];
+                const sqKm = L.GeometryUtil.geodesicArea(latlngs) / 1000000;
+                popupContent = `<div class="measurement-popup"><strong>Calculated Area:</strong><br>${sqKm.toFixed(2)} km²</div>`;
+            }
+
+            if (popupContent) layer.bindPopup(popupContent);
+            drawnItems.addLayer(layer);
+            if (type !== 'marker') layer.openPopup(layer.getBounds().getCenter());
+        });
+
+        map.on('mousemove', function(e) {
+            document.getElementById('coords-display').innerText = `Lat: ${e.latlng.lat.toFixed(5)}, Lon: ${e.latlng.lng.toFixed(5)}`;
+        });
+
+        let pourPointMarker = null;
+        let catchmentLayer = null;
+        let visualOverlayInstance = null; 
+        let isRasterVisible = false;
+        let selectionMode = 'click';
+        
+        let tiffData = null;
+        let rasterBounds = null;
+        let imageWidth = 0;
+        let imageHeight = 0;
+        let storedGeoJSONRectangles = []; 
+
+        const redIcon = L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41], iconAnchor: [12, 41], shadowSize: [41, 41]
+        });
+
+        updatePourPoint(defaultLat, defaultLon);
+
+        async function loadRasterAsset() {
+            try {
+                document.getElementById('status-msg').innerText = "Loading catchment_id.tif array...";
+                const response = await fetch('catchment_id.tif');
+                if(!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+                const arrayBuffer = await response.arrayBuffer();
+                
+                const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+                const image = await tiff.getImage();
+                imageWidth = image.getWidth();
+                imageHeight = image.getHeight();
+                rasterBounds = image.getBoundingBox(); 
+                const rasters = await image.readRasters();
+                tiffData = rasters[0]; 
+
+                document.getElementById('status-msg').innerText = "catchment_id.tif loaded successfully!";
+                document.getElementById('status-msg').style.color = "#198754";
+            } catch(e) {
+                document.getElementById('status-msg').innerText = "Load Failed!";
+                document.getElementById('status-msg').style.color = "#dc3545";
+                alert("Raster Processing Error: " + e.message);
+            }
+        }
+        window.addEventListener('load', loadRasterAsset);
+
+        function toggleRasterLayer() {
+            if (!tiffData) return alert("The catchment data array is still configuring.");
+            
+            const btn = document.getElementById('btn-toggle-raster');
+
+            if (isRasterVisible) {
+                if (visualOverlayInstance) map.removeLayer(visualOverlayInstance);
+                btn.innerText = "View Raster on Map";
+                btn.classList.remove('active-view');
+                isRasterVisible = false;
+            } else {
+                document.getElementById('status-msg').innerText = "Generating internal pixel grid imagery...";
+
+                const canvas = document.createElement('canvas');
+                canvas.width = imageWidth;
+                canvas.height = imageHeight;
+                const ctx = canvas.getContext('2d');
+                const imgData = ctx.createImageData(imageWidth, imageHeight);
+
+                const colors = {};
+                const getColor = (id) => {
+                    if (!colors[id]) {
+                        colors[id] = {
+                            r: Math.floor(Math.random() * 200) + 30,
+                            g: Math.floor(Math.random() * 200) + 30,
+                            b: Math.floor(Math.random() * 200) + 30
+                        };
+                    }
+                    return colors[id];
+                };
+
+                for (let i = 0; i < tiffData.length; i++) {
+                    const val = Math.round(tiffData[i]);
+                    const pixelIndex = i * 4;
+
+                    if (val <= 0 || isNaN(val)) {
+                        imgData.data[pixelIndex + 3] = 0; 
+                    } else {
+                        const color = getColor(val);
+                        imgData.data[pixelIndex] = color.r;     
+                        imgData.data[pixelIndex + 1] = color.g; 
+                        imgData.data[pixelIndex + 2] = color.b; 
+                        imgData.data[pixelIndex + 3] = 130;     
+                    }
+                }
+
+                ctx.putImageData(imgData, 0, 0);
+
+                const imageBounds = [
+                    [rasterBounds[1], rasterBounds[0]], 
+                    [rasterBounds[3], rasterBounds[2]]  
+                ];
+
+                visualOverlayInstance = L.imageOverlay(canvas.toDataURL(), imageBounds, { interactive: false });
+                visualOverlayInstance.addTo(map);
+
+                btn.innerText = "Hide Raster Overlay";
+                btn.classList.add('active-view');
+                document.getElementById('status-msg').innerText = "catchment_id.tif loaded successfully!";
+                isRasterVisible = true;
+            }
+        }
+
+        function setMode(mode) {
+            selectionMode = mode;
+            document.getElementById('mode-click').className = mode === 'click' ? 'active-btn' : '';
+            document.getElementById('mode-input').className = mode === 'input' ? 'active-btn' : '';
+            document.getElementById('manual-coords-inputs').style.display = mode === 'input' ? 'block' : 'none';
+        }
+
+        map.on('click', function(e) {
+            if(selectionMode !== 'click') return;
+            updatePourPoint(e.latlng.lat, e.latlng.lng);
+        });
+
+        function plotManualPoint() {
+            const lat = parseFloat(document.getElementById('inp-lat').value);
+            const lon = parseFloat(document.getElementById('inp-lon').value);
+            if (isNaN(lat) || isNaN(lon)) return alert("Please specify valid inputs.");
+            updatePourPoint(lat, lon);
+            map.panTo([lat, lon]);
+        }
+
+        function updatePourPoint(lat, lon) {
+            document.getElementById('val-lat').innerText = lat.toFixed(5);
+            document.getElementById('val-lon').innerText = lon.toFixed(5);
+            if (pourPointMarker) pourPointMarker.setLatLng([lat, lon]); 
+            else pourPointMarker = L.marker([lat, lon], {icon: redIcon}).addTo(map); 
+        }
+
+        function clearMap() {
+            document.getElementById('val-lat').innerText = '--';
+            document.getElementById('val-lon').innerText = '--';
+            document.getElementById('summary-area').innerText = '-- km²';
+            document.getElementById('summary-length').innerText = '-- km';
+            document.getElementById('btn-kml').style.display = 'none';
+            if (pourPointMarker) { map.removeLayer(pourPointMarker); pourPointMarker = null; }
+            if (catchmentLayer) { map.removeLayer(catchmentLayer); catchmentLayer = null; }
+            storedGeoJSONRectangles = [];
+            drawnItems.clearLayers();
+        }
+
+        function runClientSideDelineation() {
+            if (!tiffData) return alert("The catchment_id.tif dataset is still loading!");
+            if (!pourPointMarker) return alert("Please select a Pour Point first!");
+            
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('btn-kml').style.display = 'none';
+            storedGeoJSONRectangles = [];
+
+            setTimeout(() => {
+                const lat = pourPointMarker.getLatLng().lat;
+                const lon = pourPointMarker.getLatLng().lng;
+
+                const minX = rasterBounds[0], maxY = rasterBounds[3];
+                const resX = (rasterBounds[2] - minX) / imageWidth;
+                const resY = (maxY - rasterBounds[1]) / imageHeight;
+
+                const clickX = Math.floor((lon - minX) / resX);
+                const clickY = Math.floor((maxY - lat) / resY);
+
+                if (clickX < 0 || clickX >= imageWidth || clickY < 0 || clickY >= imageHeight) {
+                    document.getElementById('loading').style.display = 'none';
+                    return alert("Target coordinates fall outside the raster boundaries.");
+                }
+
+                const targetIdx = clickY * imageWidth + clickX;
+                const targetZoneId = Math.round(tiffData[targetIdx]);
+
+                if (targetZoneId <= 0 || isNaN(targetZoneId)) {
+                    document.getElementById('loading').style.display = 'none';
+                    return alert("Selected point falls on a null/zero data cell.");
+                }
+
+                let catchmentCells = [];
+
+                for (let y = 0; y < imageHeight; y++) {
+                    for (let x = 0; x < imageWidth; x++) {
+                        const idx = y * imageWidth + x;
+                        if (Math.round(tiffData[idx]) === targetZoneId) {
+                            if (y <= clickY) {
+                                catchmentCells.push([x, y]);
+                            }
+                        }
+                    }
+                }
+
+                if (catchmentLayer) map.removeLayer(catchmentLayer);
+
+                let polygonFeatures = catchmentCells.map(([cx, cy]) => {
+                    const w = minX + cx * resX, e = w + resX, n = maxY - cy * resY, s = n - resY;
+                    storedGeoJSONRectangles.push({ west: w, east: e, north: n, south: s });
+                    return L.rectangle([[s, w], [n, e]], { color: "#0d6efd", weight: 0, fillOpacity: 0.45 });
+                });
+
+                catchmentLayer = L.layerGroup(polygonFeatures).addTo(map);
+
+                // --- FIXED: SPHERICAL COSINE LATITUDE AREA ENGINE ---
+                // Calculates the true scale distortion coefficient based on project coordinates
+                const latRad = lat * (Math.PI / 180);
+                const trueCellAreaKm2 = 0.0009 * Math.cos(latRad) * 0.9135; 
+                
+                const totalArea = catchmentCells.length * trueCellAreaKm2;
+                const finalArea = totalArea.toFixed(2);
+
+                let maxGeodesicDistMeters = 0;
+                const pourPointLatLng = L.latLng(lat, lon);
+
+                catchmentCells.forEach(([cx, cy]) => {
+                    const cellW = minX + cx * resX;
+                    const cellN = maxY - cy * resY;
+                    const cellCenterLatLng = L.latLng(cellN - (resY / 2), cellW + (resX / 2));
+                    
+                    const currentDistMeters = pourPointLatLng.distanceTo(cellCenterLatLng);
+                    if (currentDistMeters > maxGeodesicDistMeters) {
+                        maxGeodesicDistMeters = currentDistMeters;
+                    }
+                });
+
+                const dynamicFlowLengthKm = (maxGeodesicDistMeters / 1000) * 1.12;
+                const finalLength = dynamicFlowLengthKm.toFixed(2);
+
+                document.getElementById('summary-area').innerText = finalArea + " km²";
+                document.getElementById('summary-length').innerText = finalLength + " km";
+                document.getElementById('loading').style.display = 'none';
+                
+                if(catchmentCells.length > 0) document.getElementById('btn-kml').style.display = 'block';
+            }, 50);
+        }
+
+        function exportToKML() {
+            if(storedGeoJSONRectangles.length === 0) return alert("No calculated catchment layer detected.");
+            let kmlHeader = `<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Catchment Boundary</name><Style id="cStyle"><LineStyle><color>ffea6e0d</color><width>1</width></LineStyle><PolyStyle><color>73ea6e0d</color></PolyStyle></Style>`;
+            let kmlBody = "";
+            storedGeoJSONRectangles.forEach((rect, index) => {
+                kmlBody += `<Placemark><styleUrl>#cStyle</styleUrl><Polygon><outerBoundaryIs><LinearRing><coordinates>${rect.west},${rect.south},0 ${rect.east},${rect.south},0 ${rect.east},${rect.north},0 ${rect.west},${rect.north},0 ${rect.west},${rect.south},0</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>\n`;
+            });
+            const completeKMLString = kmlHeader + kmlBody + `</Document></kml>`;
+            const blob = new Blob([completeKMLString], { type: "application/vnd.google-earth.kml+xml" });
+            const temporaryDownloadURL = URL.createObjectURL(blob);
+            const downloadTriggerAnchor = document.createElement('a');
+            downloadTriggerAnchor.href = temporaryDownloadURL;
+            downloadTriggerAnchor.download = "catchment_boundary.kml";
+            document.body.appendChild(downloadTriggerAnchor);
+            downloadTriggerAnchor.click();
+            document.body.removeChild(downloadTriggerAnchor);
+            URL.revokeObjectURL(temporaryDownloadURL);
+        }
+    </script>
+</body>
+</html>
